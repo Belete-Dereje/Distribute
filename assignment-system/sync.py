@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -30,10 +30,29 @@ LOCAL = os.environ.get('SYNC_LOCAL_URL') or _file_config.get('SYNC_LOCAL_URL', '
 SYNC_INTERVAL = int(os.environ.get('SYNC_INTERVAL_SEC') or _file_config.get('SYNC_INTERVAL_SEC', '5'))
 STATE_FILE = os.environ.get('SYNC_STATE_FILE') or _file_config.get('SYNC_STATE_FILE', '.sync_state.json')
 REQUEST_TIMEOUT = int(os.environ.get('SYNC_TIMEOUT_SEC') or _file_config.get('SYNC_TIMEOUT_SEC', '10'))
+SYNC_OVERLAP_SEC = int(os.environ.get('SYNC_OVERLAP_SEC') or _file_config.get('SYNC_OVERLAP_SEC', '10'))
 
 
 def utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+def parse_sync_ts(value):
+    if not value:
+        return None
+    text = str(value).strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+def since_with_overlap(last_since):
+    parsed = parse_sync_ts(last_since)
+    if parsed is None:
+        return last_since
+    return (parsed - timedelta(seconds=SYNC_OVERLAP_SEC)).isoformat()
 
 
 def normalize_peer(value):
@@ -72,7 +91,8 @@ def count_records(sync_payload):
 
 
 def sync_once(peer_url, last_since):
-    params = {'since': last_since} if last_since else None
+    request_since = since_with_overlap(last_since)
+    params = {'since': request_since} if request_since else None
     remote_resp = requests.get(f"{peer_url}/sync/data", params=params, timeout=REQUEST_TIMEOUT)
     remote_resp.raise_for_status()
 

@@ -4,6 +4,7 @@ import sqlite3
 from config import Config
 from datetime import datetime
 import os
+import socket
 from io import BytesIO
 import uuid
 
@@ -13,6 +14,12 @@ def get_db():
     conn = sqlite3.connect('assignments.db')
     conn.row_factory = sqlite3.Row
     return conn
+
+def sync_timestamp():
+    return datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+
+def get_node_id():
+    return os.environ.get('NODE_ID') or socket.gethostname()
 
 
 @teacher_bp.route('/dashboard')
@@ -474,14 +481,30 @@ def evaluate(submission_id):
             return redirect(url_for('teacher.evaluate', submission_id=submission_id))
 
         # if this is a group submission, apply grade to all members in the same group
+        evaluated_at = sync_timestamp()
+        node_id = get_node_id()
         if submission['group_id']:
             cur.execute("""
-                UPDATE submissions SET grade = ?, feedback = ?, status = 'evaluated', complaint_status = 'responded', evaluated_at = ? WHERE group_id = ?
-            """, (grade, feedback, datetime.now(), submission['group_id']))
+                UPDATE submissions
+                SET grade = ?, feedback = ?, status = 'evaluated',
+                    complaint_status = 'responded', evaluated_at = ?,
+                    updated_at = ?, node_id = ?
+                WHERE group_id = ?
+            """, (grade, feedback, evaluated_at, evaluated_at, node_id, submission['group_id']))
         else:
             cur.execute("""
-                UPDATE submissions SET grade = ?, feedback = ?, status = 'evaluated', complaint_status = 'responded', evaluated_at = ? WHERE id = ?
-            """, (grade, feedback, datetime.now(), submission_id))
+                UPDATE submissions
+                SET grade = ?, feedback = ?, status = 'evaluated',
+                    complaint_status = 'responded', evaluated_at = ?,
+                    updated_at = ?, node_id = ?
+                WHERE id = ?
+            """, (grade, feedback, evaluated_at, evaluated_at, node_id, submission_id))
+
+        if cur.rowcount == 0:
+            conn.rollback()
+            conn.close()
+            flash('Evaluation was not saved because the submission row was not found.', 'danger')
+            return redirect(url_for('teacher.view_submissions', assignment_id=submission['assignment_id']))
 
         conn.commit()
         conn.close()
