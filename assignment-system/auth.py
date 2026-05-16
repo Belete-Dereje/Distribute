@@ -3,6 +3,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 import sqlite3
 from config import Config
 import uuid
+from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -13,6 +14,48 @@ def get_db():
     conn = sqlite3.connect('assignments.db')
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def get_system_settings():
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT setting_key, setting_value FROM system_settings")
+        return {row['setting_key']: row['setting_value'] for row in cur.fetchall()}
+    except sqlite3.OperationalError:
+        return {}
+    finally:
+        cur.close()
+        conn.close()
+
+
+def registration_allowed(role):
+    settings = get_system_settings()
+    key = 'reg_student' if role == 'student' else 'reg_teacher' if role == 'teacher' else None
+    if key and settings.get(key, 'on') != 'on':
+        return False, 'Registration is currently disabled for this role.'
+
+    reg_start = settings.get('reg_start', '').strip()
+    reg_end = settings.get('reg_end', '').strip()
+    now = datetime.utcnow()
+
+    if reg_start:
+        try:
+            start_dt = datetime.fromisoformat(reg_start.replace('Z', '+00:00')).replace(tzinfo=None)
+            if now < start_dt:
+                return False, 'Registration has not started yet.'
+        except ValueError:
+            pass
+
+    if reg_end:
+        try:
+            end_dt = datetime.fromisoformat(reg_end.replace('Z', '+00:00')).replace(tzinfo=None)
+            if now > end_dt:
+                return False, 'Registration period has ended.'
+        except ValueError:
+            pass
+
+    return True, ''
 
 
 @login_manager.user_loader
@@ -60,6 +103,11 @@ def register():
         
         if len(password) < 6:
             flash('Password must be at least 6 characters!', 'danger')
+            return render_template('register.html')
+
+        allowed, message = registration_allowed(role)
+        if not allowed:
+            flash(message, 'warning')
             return render_template('register.html')
         
         if role == 'student' and not user_id.startswith('DBU'):

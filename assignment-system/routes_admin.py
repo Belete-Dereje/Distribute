@@ -76,12 +76,13 @@ def dashboard():
         CREATE TABLE IF NOT EXISTS system_settings (
             setting_key TEXT PRIMARY KEY,
             setting_value TEXT NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            node_id TEXT
         )
     """)
     conn.commit()
     
-    cur.execute("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('reg_student', 'reg_teacher')")
+    cur.execute("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('reg_student', 'reg_teacher', 'reg_start', 'reg_end')")
     settings = {row['setting_key']: row['setting_value'] for row in cur.fetchall()}
     settings.setdefault('reg_student', 'on')
     settings.setdefault('reg_teacher', 'on')
@@ -312,9 +313,13 @@ def settings():
     if request.method == 'POST':
         reg_student = request.form.get('reg_student', 'off')
         reg_teacher = request.form.get('reg_teacher', 'off')
+        reg_start = request.form.get('reg_start', '').strip()
+        reg_end = request.form.get('reg_end', '').strip()
         
         cur.execute("INSERT OR REPLACE INTO system_settings (setting_key, setting_value) VALUES ('reg_student', ?)", (reg_student,))
         cur.execute("INSERT OR REPLACE INTO system_settings (setting_key, setting_value) VALUES ('reg_teacher', ?)", (reg_teacher,))
+        cur.execute("INSERT OR REPLACE INTO system_settings (setting_key, setting_value) VALUES ('reg_start', ?)", (reg_start,))
+        cur.execute("INSERT OR REPLACE INTO system_settings (setting_key, setting_value) VALUES ('reg_end', ?)", (reg_end,))
         conn.commit()
         flash('Settings saved!', 'success')
     
