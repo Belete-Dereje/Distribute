@@ -310,25 +310,14 @@ def submit(assignment_id):
                 filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
                 file.save(filepath)
                 file_paths.append(filename)
-                uploaded_files = request.files.getlist('submission_files')
-        file_paths = []
-        for file in uploaded_files:
-            if file.filename:
-                filename = f"sub_{datetime.now().timestamp()}_{file.filename}"
-                filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
-                file.save(filepath)
-                file_paths.append(filename)
         
         files_str = ','.join(file_paths) if file_paths else (existing['files'] if existing else '')
         comment = request.form.get('comment', '').strip()
         # handle group submission
         if assignment and assignment['is_group']:
             # teammates are passed as student ids
-            teammates = request.form.getlist('teammates')
-            try:
-                teammates = [int(t) for t in teammates if t]
-            except Exception:
-                teammates = []
+            teammates = [t.strip() for t in request.form.getlist('teammates') if t.strip()]
+            selected_ids = teammates[:]
             # ensure submitter included
             if student_id not in teammates:
                 teammates.append(student_id)

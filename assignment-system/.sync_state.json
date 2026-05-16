@@ -1,12 +1,12 @@
 {
   "http://10.49.210.216:5000": {
     "last_error": null,
-    "last_error_at": "2026-05-16T11:57:35.648316+00:00",
-    "last_successful_at": "2026-05-16T12:07:41.317763+00:00",
-    "last_successful_since": "2026-05-16T12:07:41.782438+00:00"
+    "last_error_at": "2026-05-16T12:37:02.855368+00:00",
+    "last_successful_at": "2026-05-16T13:00:42.444963+00:00",
+    "last_successful_since": "2026-05-16T13:00:42.076310+00:00"
   },
   "http://10.49.210.76:5000": {
-    "last_error": "network_error: HTTPConnectionPool(host='10.49.210.76', port=5000): Max retries exceeded with url: /sync/data (Caused by ConnectTimeoutError(<HTTPConnection(host='10.49.210.76', port=5000) at 0x71d06d3d3d40>, 'Connection to 10.49.210.76 timed out. (connect timeout=10)'))",
-    "last_error_at": "2026-05-16T12:07:51.328953+00:00"
+    "last_error": "network_error: HTTPConnectionPool(host='10.49.210.76', port=5000): Max retries exceeded with url: /sync/data (Caused by ConnectTimeoutError(<HTTPConnection(host='10.49.210.76', port=5000) at 0x754a8fb3ecc0>, 'Connection to 10.49.210.76 timed out. (connect timeout=10)'))",
+    "last_error_at": "2026-05-16T13:00:52.459282+00:00"
   }
 }
