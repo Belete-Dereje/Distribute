@@ -329,20 +329,39 @@ def create_app():
         if value is None:
             return None
         if isinstance(value, datetime):
-            return value
+            parsed = value
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
         text = str(value).strip()
         if not text:
             return None
         try:
-            return datetime.fromisoformat(text.replace('Z', '+00:00'))
+            parsed = datetime.fromisoformat(text.replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
         except ValueError:
             pass
         for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
             try:
-                return datetime.strptime(text, fmt)
+                return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
         return None
+
+    def _filter_rows_since(rows, col_names, since):
+        since_dt = _parse_sync_ts(since)
+        if since_dt is None or 'updated_at' not in col_names:
+            return rows
+
+        updated_idx = col_names.index('updated_at')
+        filtered = []
+        for row in rows:
+            row_dt = _parse_sync_ts(row[updated_idx])
+            if row_dt is not None and row_dt > since_dt:
+                filtered.append(row)
+        return filtered
 
     def _rows_as_dicts(rows, col_names):
         result = []
@@ -444,12 +463,10 @@ def create_app():
             col_names = [c[1] for c in col_info]
             has_updated_at = 'updated_at' in col_names
 
-            if since and has_updated_at:
-                cur.execute(f"SELECT * FROM {table} WHERE updated_at > ?", (since,))
-            else:
-                cur.execute(f"SELECT * FROM {table}")
-
+            cur.execute(f"SELECT * FROM {table}")
             rows = cur.fetchall()
+            if since and has_updated_at:
+                rows = _filter_rows_since(rows, col_names, since)
             data[table] = _rows_as_dicts(rows, col_names)
 
         conn.close()
