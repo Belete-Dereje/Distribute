@@ -1,0 +1,123 @@
+{% extends "teacher_base.html" %}
+{% block title %}Submissions{% endblock %}
+
+{% block extra_css %}
+<style>
+    .content-section { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 25px; }
+    .content-section h3 { margin-bottom: 20px; color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+    th { background: #3498db; color: white; }
+    .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; color: white; font-size: 12px; display: inline-block; margin: 2px; }
+    .btn-primary { background: #3498db; }
+    .btn-success { background: #27ae60; }
+    .btn-warning { background: #f39c12; color: black; }
+    .btn-danger { background: #e74c3c; }
+    .btn-info { background: #17a2b8; }
+    .complaint-badge { background: #e74c3c; color: white; padding: 3px 8px; border-radius: 10px; font-size: 11px; }
+    .info-bar { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    .complaint-text { color: #e74c3c; font-style: italic; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>Submissions: {{ assignment[1] }}</h2>
+
+<div class="info-bar">
+    <strong>Course:</strong> {{ assignment['course_name'] }} | 
+    <strong>Dept:</strong> {{ assignment['department'] }} | 
+    <strong>Year:</strong> {{ assignment['year'] }} | 
+    <strong>Deadline:</strong> {{ assignment['deadline'] }} | 
+    <strong>Late:</strong> {% if assignment['late_submission'] %}Penalty {{ assignment['penalty_per_day'] }}%/day{% else %}Not Allowed{% endif %} |
+    <strong>Max Score:</strong> {{ assignment['max_score'] if assignment['max_score'] is not none else 100 }}
+</div>
+
+<!-- Submitted -->
+<div class="content-section">
+    <h3>✅ Submitted ({{ submissions|length }})</h3>
+    {% if submissions %}
+    <table>
+        <tr><th>Type</th><th>Members</th><th>Status</th><th>Grade</th><th>Files</th><th>Complaint</th><th>Submitted</th><th>Action</th></tr>
+        {% for s in submissions %}
+        <tr>
+            <td>{% if s.is_group %}Group{% else %}Individual{% endif %}</td>
+            <td>
+                {% for member in s.members %}
+                    <div>{{ member.first_name }} {{ member.last_name }} <small style="color:#7f8c8d;">({{ member.user_id }})</small></div>
+                {% endfor %}
+            </td>
+            <td>{{ s.status }}</td>
+            <td>{{ s.grade if s.grade else '-' }}</td>
+            <td>
+                {% if s.files %}
+                    {% for file in s.files.split(',') %}
+                        <a href="/teacher/download/{{ file.strip() }}" class="btn btn-info">📥</a>
+                    {% endfor %}
+                {% else %}-{% endif %}
+            </td>
+            <td>
+                {% if s.complaint %}
+                    <span class="complaint-badge" title="{{ s.complaint }}">📢</span>
+                {% else %}-{% endif %}
+            </td>
+            <td>{{ s.submitted_at if s.submitted_at else '' }}</td>
+            <td>
+                <a href="/teacher/evaluate/{{ s.submission_id }}" class="btn btn-primary">
+                    {% if s.status == 'evaluated' %}Update{% else %}Evaluate{% endif %}
+                </a>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}<p style="color:#95a5a6;">No submissions yet.</p>{% endif %}
+</div>
+
+<!-- Not Submitted / Manage Late -->
+<div class="content-section">
+    <h3>🕓 Not Submitted ({{ not_submitted|length }})</h3>
+    {% if not_submitted %}
+    <form method="POST" action="/teacher/manage-late/{{ assignment['id'] }}">
+        <p>Select students to allow or revoke late submission:</p>
+        <table>
+            <tr><th></th><th>Student ID</th><th>Name</th></tr>
+            {% for ns in not_submitted %}
+            <tr>
+                <td><input type="checkbox" name="student_ids" value="{{ ns[0] }}"></td>
+                <td>{{ ns[3] }}</td>
+                <td>{{ ns[1] }} {{ ns[2] }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        <div style="margin-top:12px;">
+            <label style="display:block;font-weight:600;margin-bottom:6px;">Reason (for allowing):</label>
+            <textarea name="reason" rows="2" style="width:60%;padding:8px;border:1px solid #ddd;border-radius:6px;"></textarea>
+        </div>
+        <div style="margin-top:12px;">
+            <button type="submit" name="action" value="allow" class="btn btn-success">Allow Late</button>
+            <button type="submit" name="action" value="revoke" class="btn btn-danger">Revoke</button>
+        </div>
+    </form>
+    {% else %}
+    <p style="color:#95a5a6;">No students pending submission.</p>
+    {% endif %}
+</div>
+
+<!-- Allowed Late List -->
+<div class="content-section">
+    <h3>🔓 Allowed Late Submissions</h3>
+    {% if allowed_late_dict %}
+    <table>
+        <tr><th>Student ID</th><th>Name</th><th>Reason</th></tr>
+        {% for sid, a in allowed_late_dict.items() %}
+        <tr>
+            <td>{{ a[2] }}</td>
+            <td>{{ a[3] }}</td>
+            <td>{{ a[1] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p style="color:#95a5a6;">No students currently allowed for late submission.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "teacher_base.html" %}
+{% block title %}Evaluate Submission{% endblock %}
+
+{% block extra_css %}
+<style>
+    .details { background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .details p { margin: 8px 0; font-size: 15px; }
+    label { font-weight: bold; display: block; margin-top: 15px; }
+    input, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 5px; }
+    button { padding: 12px 30px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+    .complaint-box { background: #fff3cd; padding: 20px; border-radius: 8px; margin: 15px 0; border: 2px solid #f39c12; }
+    .complaint-box h4 { color: #e74c3c; margin-bottom: 10px; }
+    .complaint-box .complaint-text { color: #333; font-style: italic; padding: 10px; background: #fff; border-radius: 5px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>Evaluate Submission</h2>
+
+<div class="details">
+    <p><strong>Student:</strong> {{ submission['first_name'] }} {{ submission['last_name'] }}</p>
+    <p><strong>Student ID:</strong> {{ submission['user_id'] }}</p>
+    <p><strong>Assignment:</strong> {{ submission['title'] }}</p>
+    <p><strong>Max Score:</strong> {{ submission['max_score'] if submission['max_score'] is not none else 100 }}</p>
+    <p><strong>Current Value:</strong> {{ '%.2f'|format(current_value) if current_value is not none else (submission['max_score'] if submission['max_score'] is not none else 100) }}</p>
+    <p><strong>Status:</strong> {{ submission['status'] }}</p>
+    {% if group_members and group_members|length > 0 %}
+    <p style="color:#27ae60;"><strong>Group grading:</strong> This score will be applied to all group members.</p>
+    {% endif %}
+    {% if submission['student_comment'] %}
+    <p><strong>Student Comment:</strong> "{{ submission['student_comment'] }}"</p>
+    {% endif %}
+    {% if submission['files'] %}
+    <p><strong>Files:</strong> 
+        {% for file in submission['files'].split(',') %}
+            <a href="/teacher/download/{{ file.strip() }}" style="color:#3498db;">📥 Download</a>
+        {% endfor %}
+    </p>
+    {% endif %}
+</div>
+
+{% if submission['complaint'] %}
+<div class="complaint-box">
+    <h4>📢 Student Complaint</h4>
+    <div class="complaint-text">"{{ submission['complaint'] }}"</div>
+    <p style="color:#f39c12; font-size:13px; margin-top:10px;">Status: {{ submission['complaint_status'] }}</p>
+</div>
+{% endif %}
+
+{% if group_members and group_members|length > 0 %}
+<div class="details" style="margin-top:10px;">
+    <p><strong>Group Members:</strong>
+        {% for m in group_members %}
+            {{ m[1] }} {{ m[2] }} ({{ m[3] }}){% if not loop.last %}, {% endif %}
+        {% endfor %}
+    </p>
+</div>
+{% endif %}
+
+<form method="POST">
+    <label>Grade *</label>
+    <input type="number" name="grade" value="{{ submission['grade'] if submission['grade'] is not none else '' }}" min="0" max="{{ '%.2f'|format(current_value) if current_value is not none else (submission['max_score'] if submission['max_score'] is not none else 100) }}" step="0.5" required>
+    
+    <label>Feedback *</label>
+    <textarea name="feedback" rows="6" required>{{ submission['feedback'] if submission['feedback'] else '' }}</textarea>
+    <small style="color:#666;">Your feedback will be visible to the student</small>
+    
+    <button type="submit">💾 Save Evaluation</button>
+</form>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "student_base.html" %}
+{% block title %}My Grades{% endblock %}
+
+{% block extra_css %}
+<style>
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    th, td { padding: 14px 12px; text-align: left; border-bottom: 1px solid #ecf0f1; }
+    th { background: #3498db; color: white; }
+    tr:hover { background: #f8f9fa; }
+    .btn { padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; text-decoration: none; color: white; font-size: 13px; }
+    .btn-warning { background: #f39c12; color: black; }
+    .btn-success { background: #27ae60; }
+    .complaint-form { display: none; margin-top: 10px; background: #f9f9f9; padding: 15px; border-radius: 8px; }
+    textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+    .response-box { background: #d5f5e3; padding: 10px; border-radius: 8px; margin-top: 8px; border: 1px solid #27ae60; }
+    .complaint-badge { background: #e74c3c; color: white; padding: 3px 10px; border-radius: 10px; font-size: 11px; }
+</style>
+<script>
+    function showComplaint(id) {
+        var f = document.getElementById('complaint-' + id);
+        f.style.display = f.style.display === 'none' ? 'block' : 'none';
+    }
+</script>
+{% endblock %}
+
+{% block content %}
+<h2>My Grades</h2>
+
+{% if grades %}
+<table>
+    <tr><th>Assignment</th><th>Course</th><th>Teacher</th><th>Grade</th><th>Feedback</th><th>Status</th><th>Complaint</th></tr>
+    {% for g in grades %}
+    <tr>
+        <td>{{ g[0] }}</td><td>{{ g[1] }}</td><td>{{ g[2] }} {{ g[3] }}</td>
+        <td><strong>{% if g[4] is not none %}{{ g[4] }} / {{ '%.2f'|format(g[11]) }}{% else %}-{% endif %}</strong></td>
+        <td>
+            {% if g[5] %}
+                {{ g[5] }}
+            {% else %}
+                <span style="color:#999;">No feedback yet</span>
+            {% endif %}
+        </td>
+        <td>{{ g[6] }}</td>
+        <td>
+            {% if g[6] == 'evaluated' and g[4] is not none %}
+                {% if g[9] %}
+                    <span class="complaint-badge">📢 Complained</span>
+                    {% if g[10] == 'responded' %}
+                        <div class="response-box">
+                            <strong>Response:</strong> {{ g[9] }}
+                        </div>
+                    {% else %}
+                        <br><small style="color:#f39c12;">Pending response...</small>
+                    {% endif %}
+                {% else %}
+                    <button class="btn btn-warning" onclick="showComplaint({{ g[8] }})">📢 Complain</button>
+                    <div id="complaint-{{ g[8] }}" class="complaint-form">
+                        <form method="POST" action="/student/complain/{{ g[8] }}">
+                            <textarea name="complaint" rows="3" placeholder="Explain why you are not satisfied..." required></textarea>
+                            <button type="submit" class="btn btn-warning">Submit Complaint</button>
+                        </form>
+                    </div>
+                {% endif %}
+            {% else %}
+                <small style="color:#999;">Available after evaluation</small>
+            {% endif %}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No grades yet.</p>
+{% endif %}
+{% endblock %}
