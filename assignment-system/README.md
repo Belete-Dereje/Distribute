@@ -183,11 +183,11 @@ These files are important because database rows only store the filenames. The re
 
 ```mermaid
 flowchart TD
-    Start[User opens the system] --> Landing[/ landing page /]
+    Start[User opens the system] --> Landing["Landing page"]
     Landing --> Choice{User action}
 
-    Choice --> Register[/register]
-    Choice --> Login[/login]
+    Choice --> Register["/register"]
+    Choice --> Login["/login"]
 
     Register --> Role{Selected role}
     Role --> StudentReg[Student registration]
@@ -199,9 +199,9 @@ flowchart TD
     Login --> Validate[Validate email + user ID + password]
     Validate --> Approved{Approved or admin?}
     Approved -->|No| LoginError[Show error]
-    Approved -->|Admin| AdminDashboard[/admin/dashboard]
-    Approved -->|Teacher| TeacherDashboard[/teacher/dashboard]
-    Approved -->|Student| StudentDashboard[/student/dashboard]
+    Approved -->|Admin| AdminDashboard["/admin/dashboard"]
+    Approved -->|Teacher| TeacherDashboard["/teacher/dashboard"]
+    Approved -->|Student| StudentDashboard["/student/dashboard"]
 
     AdminDashboard --> AdminActions{Admin activity}
     AdminActions --> ManageUsers[Manage users]
@@ -439,7 +439,7 @@ Change this password after first login.
 
 ```mermaid
 flowchart TD
-    A[Admin login] --> B[/admin/dashboard]
+    A[Admin login] --> B["/admin/dashboard"]
     B --> C{Admin chooses activity}
     C --> D[Approve teacher]
     C --> E[Reject teacher]
@@ -463,7 +463,7 @@ flowchart TD
     A[Teacher registers] --> B[Pending approval]
     B --> C[Admin approves]
     C --> D[Teacher login]
-    D --> E[/teacher/dashboard]
+    D --> E["/teacher/dashboard"]
     E --> F{Teacher chooses activity}
     F --> G[Create assignment]
     F --> H[Edit assignment]
@@ -487,7 +487,7 @@ flowchart TD
 flowchart TD
     A[Student registers] --> B[Auto-approved student account]
     B --> C[Student login]
-    C --> D[/student/dashboard]
+    C --> D["/student/dashboard"]
     D --> E[View matching assignments]
     E --> F{Assignment type}
     F --> G[Individual submission]
