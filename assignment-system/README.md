@@ -1,86 +1,87 @@
 # Distributed Assignment Submission and Evaluation System
 
-This project is a distributed Flask web application for assignment submission, evaluation, and academic user management. It is intended to run on three different machines connected through ZeroTier. Each machine runs the same Flask application, stores its own local SQLite database, and synchronizes changes with peer machines through HTTP sync endpoints.
+This project is a distributed Flask-based assignment management system for admins, teachers, and students. Each machine runs the same application, keeps its own local SQLite database, stores uploaded files locally, and synchronizes database changes with peer machines over HTTP.
 
-The system supports three roles:
+The system is explicitly a distributed system because it has multiple independent nodes, each with its own application process and local database, connected through a network such as ZeroTier. The nodes exchange updates through `/sync/data` and `/sync/update` so users on different machines can share the same academic workflow.
 
-- `admin` manages users, approves teachers, and controls registration settings.
-- `teacher` creates assignments, reviews submissions, allows late submissions, grades work, and exports reports.
-- `student` views assignments, submits work, checks grades, and sends grade complaints.
+## Main Roles
 
-## Distributed System Overview
+- `admin`: manages registration settings, users, and teacher approvals.
+- `teacher`: creates assignments, manages late permissions, evaluates submissions, responds to complaints, and exports PDF reports.
+- `student`: registers, views assigned work, submits individual or group assignments, checks grades, and sends grade complaints.
 
-The application is distributed because the same system runs on multiple networked machines instead of depending on one central server. In this project, the expected setup is:
+## Distributed System Diagram
 
-- Three machines connected through a ZeroTier virtual private network.
-- One copy of this Flask application running on each machine.
-- One local `assignments.db` SQLite database on each machine.
-- One `sync.py` worker on each machine that communicates with peer nodes.
-- HTTP endpoints in `app.py` that send and receive changed database rows.
+```mermaid
+flowchart LR
+    subgraph N1["Node 1 / Machine 1"]
+        A1[Flask app]
+        D1[(assignments.db)]
+        S1[sync.py worker]
+        U1[static/uploads]
+        A1 <--> D1
+        A1 --> U1
+        S1 --> A1
+    end
 
-Example deployment:
+    subgraph N2["Node 2 / Machine 2"]
+        A2[Flask app]
+        D2[(assignments.db)]
+        S2[sync.py worker]
+        U2[static/uploads]
+        A2 <--> D2
+        A2 --> U2
+        S2 --> A2
+    end
 
-```text
-ZeroTier Network
+    subgraph N3["Node 3 / Machine 3"]
+        A3[Flask app]
+        D3[(assignments.db)]
+        S3[sync.py worker]
+        U3[static/uploads]
+        A3 <--> D3
+        A3 --> U3
+        S3 --> A3
+    end
 
-┌──────────────────────────┐       ┌──────────────────────────┐
-│ Machine 1                │       │ Machine 2                │
-│ Flask app :5000          │◄─────►│ Flask app :5000          │
-│ assignments.db           │ sync  │ assignments.db           │
-│ sync.py                  │       │ sync.py                  │
-└─────────────┬────────────┘       └─────────────┬────────────┘
-              │                                  │
-              │              sync                │
-              ▼                                  ▼
-        ┌──────────────────────────┐
-        │ Machine 3                │
-        │ Flask app :5000          │
-        │ assignments.db           │
-        │ sync.py                  │
-        └──────────────────────────┘
+    S1 <-->|HTTP sync over ZeroTier| A2
+    S1 <-->|HTTP sync over ZeroTier| A3
+    S2 <-->|HTTP sync over ZeroTier| A1
+    S2 <-->|HTTP sync over ZeroTier| A3
+    S3 <-->|HTTP sync over ZeroTier| A1
+    S3 <-->|HTTP sync over ZeroTier| A2
 ```
 
-Distributed-system features shown by this project:
+Important distributed-system properties:
 
-- Replication: every node keeps a local copy of important system data.
-- Peer communication: nodes exchange data through `/sync/data` and `/sync/update`.
-- Local availability: a machine can continue serving its local users even if another node is temporarily unreachable.
-- Node identity: `NODE_ID` or the hostname identifies which machine stamped a row.
-- Incremental synchronization: `sync.py` remembers the last successful sync time and requests newer changes.
-- Conflict reduction: UUID primary keys reduce ID collisions between machines.
-- Simple conflict handling: newer `updated_at` values win when the same row exists on two nodes.
+- Replication: important tables are copied between peer nodes.
+- Local autonomy: each node can serve local users from its own `assignments.db`.
+- Peer communication: synchronization happens through HTTP endpoints.
+- Node identity: `NODE_ID` or the hostname marks which node created or updated rows.
+- Incremental sync: `.sync_state.json` stores the last successful sync time for each peer.
+- Conflict handling: when the same row exists on multiple nodes, the row with the newer `updated_at` timestamp wins.
+- UUID keys: most tables use UUIDs to reduce ID collisions when different machines create records at the same time.
 
-Important limitation: this is not a full distributed database with advanced conflict resolution. If two machines update the same row at nearly the same time, the row with the newer `updated_at` timestamp can overwrite the older one during sync.
+Limitation: this is not a full distributed database. It uses timestamp-based conflict handling, so simultaneous edits to the same row can overwrite one another if one update has a newer timestamp.
 
-## Main Features
-
-- Student registration and automatic approval.
-- Teacher registration with admin approval.
-- Admin dashboard with user counts, teacher approval, and settings.
-- Assignment creation with file attachments.
-- Individual and group submissions.
-- Late-submission control and per-day score penalty.
-- Teacher grading, feedback, and complaint response status.
-- Student grade viewing and complaint submission.
-- PDF export for assignment submissions.
-- Peer-to-peer synchronization across ZeroTier-connected nodes.
-
-## Current Project Structure
+## Project Structure
 
 ```text
 assignment-system/
+├── .env.sync
+├── .sync_state.json
+├── README.md
 ├── app.py
 ├── auth.py
 ├── config.py
-├── routes_admin.py
-├── routes_teacher.py
-├── routes_student.py
-├── sync.py
-├── setup_admin.py
 ├── node_discovery.py
+├── routes_admin.py
+├── routes_student.py
+├── routes_teacher.py
+├── setup_admin.py
+├── sync.py
 ├── assignments.db
 ├── assignments.db.backup
-├── README.md
 ├── templates/
 │   ├── landing.html
 │   ├── login.html
@@ -105,362 +106,64 @@ assignment-system/
 │       └── submit.html
 ├── static/
 │   └── uploads/
+├── assignment-system-backup/
 ├── venv/
 └── __pycache__/
 ```
 
-Note: `models.py` has been removed. The running system does not depend on it because the application uses direct `sqlite3` database queries.
-
-## File Relationship Diagram
-
-```mermaid
-flowchart TD
-    A[python app.py] --> B[create_app]
-    B --> C[Config from config.py]
-    B --> D[init_db in app.py]
-    B --> E[login_manager from auth.py]
-    B --> F[auth_bp from auth.py]
-    B --> G[admin_bp from routes_admin.py]
-    B --> H[teacher_bp from routes_teacher.py]
-    B --> I[student_bp from routes_student.py]
-    D --> J[assignments.db]
-    F --> J
-    G --> J
-    H --> J
-    I --> J
-    H --> K[static/uploads]
-    I --> K
-    L[sync.py] --> M[/sync/data in app.py]
-    L --> N[/sync/update in app.py]
-    M --> J
-    N --> J
-```
-
-## Application Startup Flow
-
-```mermaid
-flowchart TD
-    A[Run python app.py] --> B[create_app]
-    B --> C[Load Config]
-    C --> D[Create static/uploads folder]
-    D --> E[Run init_db]
-    E --> F[Create or migrate database tables]
-    F --> G[Create sync triggers and indexes]
-    G --> H[Initialize Flask-Login]
-    H --> I[Register auth, admin, teacher, student blueprints]
-    I --> J[Serve Flask app on 0.0.0.0:5000]
-```
-
-## Login and Registration Flow
-
-```mermaid
-flowchart TD
-    A[User opens /login] --> B[auth.py login]
-    B --> C[Check email, user_id, password]
-    C --> D[Read users table]
-    D --> E{Valid and approved?}
-    E -- Admin --> F[/admin/dashboard]
-    E -- Teacher --> G[/teacher/dashboard]
-    E -- Student --> H[/student/dashboard]
-    E -- No --> I[Show flash error]
-```
-
-```mermaid
-flowchart TD
-    A[User opens /register] --> B[auth.py register]
-    B --> C[Validate form fields]
-    C --> D{Role}
-    D -- Student --> E[Require DBU student ID]
-    E --> F[Insert users row approved]
-    F --> G[Insert students row]
-    D -- Teacher --> H[Require T teacher ID]
-    H --> I[Insert users row pending approval]
-    I --> J[Insert teachers row]
-    G --> K[Redirect to login]
-    J --> K
-```
-
-## Synchronization Flow
-
-```mermaid
-flowchart TD
-    A[sync.py starts] --> B[Read peers from args, env, or .env.sync]
-    B --> C[Load .sync_state.json]
-    C --> D[GET peer /sync/data?since=last_time]
-    D --> E[Peer app.py returns changed rows]
-    E --> F[POST local /sync/update]
-    F --> G[app.py merges rows into assignments.db]
-    G --> H[Save latest peer server_time]
-    H --> I[Wait SYNC_INTERVAL_SEC]
-    I --> D
-```
-
-## Root Files and Their Importance
-
-### `app.py`
-
-This is the main application file. It starts Flask, creates the database schema, connects all route files, and exposes synchronization endpoints. Without this file, the system cannot run.
-
-Important imports:
-
-- `Flask`, `render_template`, `request`, and `jsonify` are used for the web application and sync API.
-- `Config` from `config.py` loads app settings.
-- `auth_bp`, `admin_bp`, `teacher_bp`, and `student_bp` connect the other route files to the main app.
-- `sqlite3` manages the local database.
-- `socket`, `datetime`, and `uuid` support distributed node identity, timestamps, and globally unique IDs.
-
-Important constants:
-
-- `SYNC_TABLES` lists tables that are synchronized across machines.
-- `LOCAL_NODE_ID` stores the current node identity.
-
-Functions and importance:
-
-- `now_utc_iso()` returns the current UTC time in ISO format. It is used by sync responses.
-- `get_node_id()` reads `NODE_ID` from the environment or uses the machine hostname. This helps identify which distributed node produced data.
-- `generate_id()` creates UUID values. UUIDs are important because three machines can create records independently without using the same ID.
-- `migrate_legacy_schema()` checks whether an old integer-ID database exists. If found, it backs up `assignments.db` and drops old tables so the UUID schema can be created.
-- `init_db()` creates all database tables, adds missing columns to older databases, fills missing sync metadata, creates triggers, and creates indexes for synchronization.
-- `create_app()` builds the Flask app, loads config, creates the upload folder, initializes the database, connects Flask-Login, registers all blueprints, and defines sync routes.
-
-Functions inside `create_app()`:
-
-- `index()` renders `templates/landing.html` for the `/` route.
-- `_table_exists(cur, table_name)` checks whether a table exists before syncing it.
-- `_table_columns(cur, table_name)` reads SQLite column information.
-- `_parse_sync_ts(value)` converts different timestamp formats into Python datetime objects for comparison.
-- `_rows_as_dicts(rows, col_names)` converts SQLite rows into JSON-friendly dictionaries.
-- `_normalize_incoming_row(row, col_names)` accepts incoming sync rows as dictionaries or lists and normalizes them.
-- `_merge_table_rows(cur, table_name, incoming_rows)` inserts new rows and updates existing rows only when the incoming row has a newer `updated_at`.
-- `sync_data()` handles `GET /sync/data`. It returns table data to peer machines.
-- `sync_update()` handles `POST /sync/update`. It receives peer data and merges it into the local database.
-
-### `config.py`
-
-This file centralizes application configuration. It is imported by `app.py`, `routes_teacher.py`, and `routes_student.py`.
-
-Class and definitions:
-
-- `Config` is a configuration class used by Flask.
-- `SECRET_KEY` protects sessions and flash messages.
-- `SQLALCHEMY_DATABASE_URI` remains as a database URI setting, but the current system uses direct SQLite access.
-- `SQLALCHEMY_TRACK_MODIFICATIONS` is harmless but not important now because SQLAlchemy is not used.
-- `UPLOAD_FOLDER` points to `static/uploads`, where teacher and student files are saved.
-- `MAX_CONTENT_LENGTH = None` means upload size is not limited by Flask configuration.
-
-Importance: this file prevents hardcoding important paths and settings throughout the app.
-
-### `auth.py`
-
-This file handles authentication and user registration. It defines `auth_bp`, which is registered by `app.py`.
-
-Important imports:
-
-- Flask helpers render pages, redirect users, build URLs, and show flash messages.
-- Flask-Login handles sessions through `login_user`, `logout_user`, `login_required`, and `current_user`.
-- `sqlite3` reads and writes users.
-- `uuid` creates distributed-safe IDs.
-
-Functions and importance:
-
-- `get_db()` opens `assignments.db` and returns rows as dictionary-like objects.
-- `load_user(user_id)` is called by Flask-Login on each logged-in request. It rebuilds the current user object from the `users` table.
-- `register()` handles `GET` and `POST` for `/register`. It validates names, email, password, user ID, role, student profile data, and teacher profile data. It inserts rows into `users`, `students`, or `teachers`.
-- `login()` handles `GET` and `POST` for `/login`. It verifies email, user ID, password hash, and approval status, then redirects the user by role.
-- `logout()` logs out the current user and redirects to login.
-
-Registration relationship:
-
-- Student registration writes to `users` and `students`.
-- Teacher registration writes to `users` and `teachers`, but teacher login is blocked until admin approval.
-- Admin users are normally created by `setup_admin.py`.
-
-### `routes_admin.py`
-
-This file handles admin-only pages. It defines `admin_bp`, which is registered by `app.py` under `/admin`.
-
-Functions and importance:
-
-- `get_db()` opens the SQLite database for admin routes.
-- `dashboard()` shows admin statistics, pending teachers, approved teachers, department/year lists, and registration settings.
-- `approve(user_id)` changes a teacher account to approved so the teacher can log in.
-- `reject(user_id)` deletes a pending teacher's teacher profile and user account.
-- `manage_users()` lists users and supports filtering by role, year, and department.
-- `edit_user(user_id)` allows the admin to update user names, email, password, approval status, and role-specific profile data.
-- `toggle_user(user_id)` switches a user's `is_approved` value on or off.
-- `settings()` saves and displays registration settings such as `reg_student` and `reg_teacher`.
-
-Importance: this file gives the admin control over user access and system policy.
-
-### `routes_teacher.py`
-
-This file handles teacher-only pages. It defines `teacher_bp`, which is registered by `app.py` under `/teacher`.
-
-Functions and importance:
-
-- `get_db()` opens the SQLite database for teacher routes.
-- `dashboard()` shows teacher statistics such as total assignments, total submissions, unevaluated submissions, overdue assignments, and assignment lists.
-- `create_assignment()` creates a new assignment. It validates form data, checks the deadline, saves assignment files, supports max score, late penalty, and group assignment settings.
-- `edit_assignment(assignment_id)` updates assignment details and optionally replaces attached files.
-- `view_submissions(assignment_id)` shows all submissions for one assignment. It groups group submissions by `group_id` and also lists students who have not submitted.
-- `manage_late(assignment_id)` allows or revokes late-submission permission for selected students.
-- `get_stats(assignment_id)` returns JSON statistics for an assignment, including submitted, not submitted, evaluated, late, average grade, and student status data.
-- `evaluate(submission_id)` grades a submission. It calculates the effective maximum score after late penalties and applies grades to all group members when `group_id` exists.
-- `export_pdf(assignment_id)` creates a PDF report for assignment submissions using ReportLab.
-- `download_file(filename)` lets teachers download uploaded assignment or submission files from `static/uploads`.
-
-Importance: this file contains the academic workflow for creating assignments and evaluating student work.
-
-### `routes_student.py`
-
-This file handles student-only pages. It defines `student_bp`, which is registered by `app.py` under `/student`.
-
-Functions and importance:
-
-- `get_db()` opens the SQLite database for student routes.
-- `student_notifications()` is a context processor. It automatically provides reminder data to student templates, including assignments due soon and late assignments still available for submission.
-- `dashboard()` shows assignments that match the student's department and year. It also calculates submitted, unsubmitted, overdue counts, reminders, and current effective assignment values.
-- `submit(assignment_id)` handles assignment submission. It supports file uploads, comments, updates before evaluation, late submission rules, group member selection, group size limits, and shared `group_id` creation.
-- `grades()` shows submitted assignments, grades, feedback, complaint status, and effective maximum score after late penalties.
-- `complain(submission_id)` saves a student's complaint and marks it as pending.
-
-Importance: this file contains the student workflow from viewing assignments to submitting work and checking grades.
-
-### `sync.py`
-
-This is the synchronization worker. It is run separately from the Flask app on each machine.
-
-Functions and importance:
-
-- `load_env_file(filename='.env.sync')` reads sync settings from `.env.sync`.
-- `utc_now_iso()` returns the current UTC time for sync state.
-- `normalize_peer(value)` converts peer addresses like `10.49.210.216:5000` into full URLs like `http://10.49.210.216:5000`.
-- `load_state(path)` reads `.sync_state.json`, which stores the last successful sync timestamp per peer.
-- `save_state(path, state)` safely writes sync state to disk.
-- `count_records(sync_payload)` counts how many records were returned by a peer.
-- `sync_once(peer_url, last_since)` performs one sync operation: get data from peer, post it to local `/sync/update`, and return a summary.
-- `parse_args()` reads command-line peer arguments.
-- `get_peers(args)` combines peers from command-line arguments, environment variables, and `.env.sync`.
-- `main()` runs the infinite sync loop, logs success/failure, saves sync state, and waits between sync attempts.
-
-Importance: this file is what makes the project distributed instead of single-machine only.
-
-### `setup_admin.py`
-
-This script creates the first admin user.
-
-Functions and importance:
-
-- `setup_admin()` checks whether an admin already exists. If not, it creates a UUID admin user, hashes the default password, and inserts it into `users`.
-
-Default admin:
-
-```text
-Email: admin@system.com
-User ID: ADMIN001
-Password: admin123
-```
-
-Importance: without an admin account, teacher approval and system management cannot begin.
-
-### `node_discovery.py`
-
-This script helps configure the distributed network.
-
-Functions and importance:
-
-- `get_local_ips()` lists available local IP addresses.
-- `test_node_connectivity(ip, port=5000)` checks whether another node can be reached on the Flask port.
-- `load_current_config()` reads `.env.sync`.
-- `save_config(config)` writes `.env.sync`.
-- `main()` displays local addresses, current sync config, configuration instructions, and handles `--configure` and `--test-peer`.
-
-Importance: this file helps set up ZeroTier peer addresses and verify that the three machines can communicate.
-
-### `assignments.db`
-
-This is the local SQLite database. Each machine has its own copy.
-
-Important tables:
-
-- `users` stores login information, names, email, password hash, role, approval status, timestamps, and node ID.
-- `students` stores student department and year.
-- `teachers` stores teacher departments, years, and courses.
-- `assignments` stores assignment details, deadline, teacher, course, files, late rules, max score, and group settings.
-- `submissions` stores student work, uploaded files, comments, grades, feedback, status, complaints, and group IDs.
-- `allowed_late_submissions` stores teacher-approved late-submission exceptions.
-- `system_settings` stores settings such as student and teacher registration status.
-
-Importance: it is the main data store for each node.
-
-### `assignments.db.backup`
-
-This is a backup database file created during schema migration.
-
-Importance: it protects old data when the system migrates from an older database structure.
-
-### `.env.sync`
-
-This optional file stores sync configuration.
-
-Example:
-
-```env
-SYNC_PEERS=10.49.210.216:5000,10.49.210.76:5000
-SYNC_INTERVAL_SEC=5
-SYNC_TIMEOUT_SEC=10
-SYNC_LOCAL_URL=http://127.0.0.1:5000
-NODE_ID=node-1
-SYNC_STATE_FILE=.sync_state.json
-```
-
-Importance: it lets each machine know which peers to synchronize with.
-
-## Folder and Template Descriptions
-
-### `templates/`
-
-This folder contains all HTML pages rendered by Flask.
-
-Root template files:
-
-- `templates/landing.html` is rendered by `app.py` for `/`.
-- `templates/login.html` is rendered by `auth.py` for login.
-- `templates/register.html` is rendered by `auth.py` for registration.
-- `templates/admin_base.html` is the shared layout for admin pages.
-- `templates/teacher_base.html` is the shared layout for teacher pages.
-- `templates/student_base.html` is the shared layout for student pages and receives notification data from `student_notifications()`.
-
-### `templates/admin/`
-
-- `dashboard.html` displays admin statistics, pending teachers, approved teachers, and system settings.
-- `users.html` displays all users and filtering controls.
-- `edit_user.html` displays the admin form for editing a selected user.
-- `settings.html` displays registration setting controls.
-
-Relationship: these files are rendered by functions in `routes_admin.py`.
-
-### `templates/teacher/`
-
-- `dashboard.html` displays teacher assignment and submission summaries.
-- `create_assignment.html` displays the assignment creation form.
-- `edit_assignment.html` displays the assignment update form.
-- `submissions.html` displays submitted students, group submissions, missing submissions, and late-submission controls.
-- `evaluate.html` displays grading controls, feedback input, effective max score, and group members when relevant.
-
-Relationship: these files are rendered by functions in `routes_teacher.py`.
-
-### `templates/student/`
-
-- `dashboard.html` displays assignments, reminders, status counts, and submission status.
-- `submit.html` displays the submission form, existing submission data, score value, and teammate selection for group assignments.
-- `grades.html` displays grades, feedback, complaint status, and complaint forms.
-
-Relationship: these files are rendered by functions in `routes_student.py`.
-
-### `static/uploads/`
-
-This folder stores uploaded files.
+## Folders and Files
+
+| Path | Importance |
+| --- | --- |
+| `app.py` | Main Flask entry point. Creates the app, initializes the database, registers route blueprints, and exposes sync endpoints. |
+| `auth.py` | Handles registration, login, logout, registration availability, and Flask-Login user loading. |
+| `config.py` | Central location for app settings such as secret key, database URI, upload folder, and upload size behavior. |
+| `routes_admin.py` | Contains all admin pages and admin actions. |
+| `routes_teacher.py` | Contains all teacher pages and teacher assignment/evaluation actions. |
+| `routes_student.py` | Contains all student pages and student submission/grade actions. |
+| `sync.py` | Background peer synchronization worker. Pulls data from peer nodes and posts it to the local node. |
+| `node_discovery.py` | Helper script for finding local IPs, testing peer connectivity, and creating `.env.sync`. |
+| `setup_admin.py` | Creates the first default admin user when the system is initialized. |
+| `assignments.db` | Local SQLite database used by this node. Each distributed node has its own copy. |
+| `assignments.db.backup` | Backup made during schema migration from older database formats. |
+| `.env.sync` | Optional sync configuration file containing peers, node ID, local URL, timeout, and interval settings. |
+| `.sync_state.json` | Generated sync state file that stores the last successful sync time and errors per peer. |
+| `README.md` | Project documentation. |
+| `templates/` | HTML templates rendered by Flask. |
+| `templates/admin/` | Admin-specific pages. |
+| `templates/teacher/` | Teacher-specific pages. |
+| `templates/student/` | Student-specific pages. |
+| `static/uploads/` | Stores assignment files uploaded by teachers and submission files uploaded by students. |
+| `assignment-system-backup/` | Backup copy of the application, database, templates, and uploaded files. Useful for recovery, not part of the active runtime path. |
+| `venv/` | Python virtual environment and installed packages. Generated dependency folder. |
+| `__pycache__/` | Python bytecode cache generated automatically. Not part of project logic. |
+
+## Template Files
+
+| Template | Used by | Importance |
+| --- | --- | --- |
+| `templates/landing.html` | `app.py:index()` | Public landing page at `/`. |
+| `templates/login.html` | `auth.py:login()` | Login form for all roles. |
+| `templates/register.html` | `auth.py:register()` | Registration form for students and teachers. |
+| `templates/admin_base.html` | Admin pages | Shared layout/navigation for admin pages. |
+| `templates/teacher_base.html` | Teacher pages | Shared layout/navigation for teacher pages. |
+| `templates/student_base.html` | Student pages | Shared layout/navigation for student pages and reminder notifications. |
+| `templates/admin/dashboard.html` | `routes_admin.py:dashboard()` | Admin statistics, pending teachers, approved teachers, and settings summary. |
+| `templates/admin/users.html` | `routes_admin.py:manage_users()` | User list and filters. |
+| `templates/admin/edit_user.html` | `routes_admin.py:edit_user()` | Admin form for editing user profile and approval state. |
+| `templates/admin/settings.html` | `routes_admin.py:settings()` | Registration control page. |
+| `templates/teacher/dashboard.html` | `routes_teacher.py:dashboard()` | Teacher assignment and submission summary. |
+| `templates/teacher/create_assignment.html` | `routes_teacher.py:create_assignment()` | Assignment creation form. |
+| `templates/teacher/edit_assignment.html` | `routes_teacher.py:edit_assignment()` | Assignment update form. |
+| `templates/teacher/submissions.html` | `routes_teacher.py:view_submissions()` | Submitted, missing, grouped, and late-permission submission view. |
+| `templates/teacher/evaluate.html` | `routes_teacher.py:evaluate()` | Grading and feedback page. |
+| `templates/student/dashboard.html` | `routes_student.py:dashboard()` | Student assignment list, reminders, and submission status. |
+| `templates/student/submit.html` | `routes_student.py:submit()` | Individual and group submission form. |
+| `templates/student/grades.html` | `routes_student.py:grades()` | Grade, feedback, complaint, and effective-score view. |
+
+## Upload Files
+
+`static/uploads/` contains runtime user files. The exact filenames change as users upload assignments and submissions.
 
 Teacher assignment files use this pattern:
 
@@ -474,21 +177,108 @@ Student submission files use this pattern:
 sub_<timestamp>_<original_filename>
 ```
 
-Importance: this folder stores the actual assignment documents and student-submitted documents referenced by database rows.
+These files are important because database rows only store the filenames. The real uploaded documents are stored in this folder.
 
-### `venv/`
+## Application Flow Diagram
 
-This folder contains the Python virtual environment and installed packages.
+```mermaid
+flowchart TD
+    Start[User opens the system] --> Landing[/ landing page /]
+    Landing --> Choice{User action}
 
-Importance: it keeps project dependencies separate from the global Python installation.
+    Choice --> Register[/register]
+    Choice --> Login[/login]
 
-### `__pycache__/`
+    Register --> Role{Selected role}
+    Role --> StudentReg[Student registration]
+    Role --> TeacherReg[Teacher registration]
+    StudentReg --> StudentRows[Create users + students rows]
+    TeacherReg --> TeacherRows[Create pending users + teachers rows]
+    TeacherRows --> AdminApproval[Admin approves teacher]
 
-This folder contains Python bytecode cache files.
+    Login --> Validate[Validate email + user ID + password]
+    Validate --> Approved{Approved or admin?}
+    Approved -->|No| LoginError[Show error]
+    Approved -->|Admin| AdminDashboard[/admin/dashboard]
+    Approved -->|Teacher| TeacherDashboard[/teacher/dashboard]
+    Approved -->|Student| StudentDashboard[/student/dashboard]
 
-Importance: it is generated automatically by Python and is not part of the project logic.
+    AdminDashboard --> AdminActions{Admin activity}
+    AdminActions --> ManageUsers[Manage users]
+    AdminActions --> ApproveTeacher[Approve or reject teachers]
+    AdminActions --> Settings[Change registration settings]
 
-## Database Relationships
+    TeacherDashboard --> TeacherActions{Teacher activity}
+    TeacherActions --> CreateAssignment[Create assignment]
+    TeacherActions --> EditAssignment[Edit assignment]
+    TeacherActions --> ViewSubmissions[View submissions]
+    TeacherActions --> ManageLate[Allow or revoke late submission]
+    TeacherActions --> Evaluate[Evaluate and give feedback]
+    TeacherActions --> ExportPDF[Export PDF report]
+
+    StudentDashboard --> StudentActions{Student activity}
+    StudentActions --> ViewAssignments[View matching assignments]
+    StudentActions --> SubmitWork[Submit individual or group work]
+    StudentActions --> ViewGrades[View grades]
+    StudentActions --> Complaint[Send grade complaint]
+
+    ManageUsers --> DB[(assignments.db)]
+    ApproveTeacher --> DB
+    Settings --> DB
+    CreateAssignment --> DB
+    EditAssignment --> DB
+    ViewSubmissions --> DB
+    ManageLate --> DB
+    Evaluate --> DB
+    SubmitWork --> DB
+    Complaint --> DB
+
+    CreateAssignment --> Uploads[static/uploads]
+    SubmitWork --> Uploads
+
+    DB --> SyncWorker[sync.py]
+    SyncWorker --> PeerSync[Peer Flask sync endpoints]
+    PeerSync --> PeerDB[(Peer assignments.db)]
+```
+
+## Startup Flow
+
+```mermaid
+flowchart TD
+    A[Run python app.py] --> B[create_app]
+    B --> C[Load Config]
+    C --> D[Create static/uploads if missing]
+    D --> E[init_db]
+    E --> F[migrate_legacy_schema]
+    F --> G[Create or update tables]
+    G --> H[Create sync triggers and indexes]
+    H --> I[Initialize Flask-Login]
+    I --> J[Register auth, admin, teacher, student blueprints]
+    J --> K[Expose sync endpoints]
+    K --> L[Serve on 0.0.0.0:5000]
+```
+
+## Synchronization Flow
+
+```mermaid
+sequenceDiagram
+    participant Worker as Local sync.py
+    participant Local as Local Flask app
+    participant LocalDB as Local assignments.db
+    participant Peer as Peer Flask app
+    participant PeerDB as Peer assignments.db
+
+    Worker->>Worker: Read .env.sync and .sync_state.json
+    Worker->>Peer: GET /sync/data?since=last_successful_since
+    Peer->>PeerDB: Read synchronized tables
+    Peer-->>Worker: Return changed rows + server_time
+    Worker->>Local: POST /sync/update with peer rows
+    Local->>LocalDB: Insert new rows or update newer rows
+    Local-->>Worker: Return merge summary
+    Worker->>Worker: Save last_successful_since in .sync_state.json
+```
+
+## Database Relationship Diagram
 
 ```mermaid
 erDiagram
@@ -502,36 +292,220 @@ erDiagram
     teachers ||--o{ allowed_late_submissions : grants
 ```
 
-Main relationship meaning:
+## Main Database Tables
 
-- One user may have one student profile or one teacher profile.
-- One teacher can create many assignments.
-- One assignment can receive many submissions.
-- One student can submit many assignments.
-- Late-submission permission connects a teacher, student, and assignment.
+| Table | Importance |
+| --- | --- |
+| `users` | Login identity, names, email, password hash, role, approval status, timestamps, and node identity. |
+| `students` | Student profile connected to `users`, including department and year. |
+| `teachers` | Teacher profile connected to `users`, including departments, years, and courses. |
+| `assignments` | Assignment details, target department/year, deadline, late rules, score, group settings, teacher comments, and files. |
+| `submissions` | Student work, uploaded files, comments, grades, feedback, evaluation state, complaints, group IDs, and timestamps. |
+| `allowed_late_submissions` | Special late-submission permission for selected students. |
+| `system_settings` | Registration settings such as student/teacher registration switches and registration start/end dates. |
 
-## Important Data Definitions
+## Main Functions by File
 
-- `id` is the UUID primary key for most main tables.
-- `user_id` is the readable school ID, such as `ADMIN001`, `DBU...`, or `T...`.
-- `role` identifies whether the account is admin, teacher, or student.
-- `is_approved` controls login permission for teachers and active status for users.
-- `department` and `year` connect students to assignments.
-- `departments`, `years`, and `courses` describe what a teacher can teach.
-- `deadline` controls whether a submission is on time or late.
-- `late_submission` controls whether late work is accepted.
-- `penalty_per_day` reduces the effective maximum score after the deadline.
-- `max_score` stores the full possible score.
-- `is_group` marks an assignment as a group assignment.
-- `max_group_size` limits group members.
-- `group_id` connects multiple student submission rows into one group.
-- `status` tracks submission state, such as `submitted`, `late`, or `evaluated`.
-- `grade` stores the teacher's score.
-- `feedback` stores teacher comments on submitted work.
-- `complaint` stores a student grade complaint.
-- `complaint_status` tracks complaint progress.
-- `updated_at` is used by synchronization to compare row versions.
-- `node_id` identifies the node that created or stamped a row.
+### `app.py`
+
+| Function | Importance |
+| --- | --- |
+| `now_utc_iso()` | Produces UTC timestamps for sync responses. |
+| `get_node_id()` | Reads `NODE_ID` or uses hostname to identify the current distributed node. |
+| `generate_id()` | Creates UUID values for distributed-safe primary keys. |
+| `migrate_legacy_schema()` | Detects old integer-ID databases, creates `assignments.db.backup`, and prepares the UUID schema. |
+| `init_db()` | Creates/migrates tables, fills sync metadata, creates triggers, and adds indexes for incremental synchronization. |
+| `create_app()` | Builds the Flask app, initializes storage, registers blueprints, and defines local sync helper routes. |
+| `index()` | Renders the public landing page. Defined inside `create_app()`. |
+| `_table_exists()` | Checks whether a table exists before sync reads or merges. |
+| `_table_columns()` | Reads SQLite table schema for flexible sync logic. |
+| `_parse_sync_ts()` | Converts sync timestamps into comparable UTC datetimes. |
+| `_filter_rows_since()` | Returns only rows newer than the requested sync timestamp. |
+| `_rows_as_dicts()` | Converts SQLite rows into JSON-friendly dictionaries. |
+| `_normalize_incoming_row()` | Accepts incoming sync rows as dictionaries or lists and normalizes them for merging. |
+| `_merge_table_rows()` | Inserts missing rows and updates local rows only when incoming data is newer. |
+| `sync_data()` | Implements `GET /sync/data` for peer nodes to fetch local changed rows. |
+| `sync_update()` | Implements `POST /sync/update` for receiving and merging peer rows. |
+
+### `auth.py`
+
+| Function | Importance |
+| --- | --- |
+| `get_db()` | Opens `assignments.db` with row objects for authentication queries. |
+| `get_system_settings()` | Reads registration settings from the database. |
+| `registration_allowed(role)` | Enforces student/teacher registration switches and date ranges. |
+| `load_user(user_id)` | Rebuilds the logged-in user object for Flask-Login. |
+| `register()` | Handles student and teacher registration, validation, password hashing, and profile row creation. |
+| `login()` | Verifies credentials and redirects each approved user to the correct role dashboard. |
+| `logout()` | Ends the session and redirects to login. |
+
+### `routes_admin.py`
+
+| Function | Importance |
+| --- | --- |
+| `get_db()` | Opens the database for admin pages. |
+| `dashboard()` | Shows system counts, departments, years, pending teachers, approved teachers, and registration settings. |
+| `approve(user_id)` | Approves a teacher account so the teacher can log in. |
+| `reject(user_id)` | Deletes a pending teacher profile and user account. |
+| `manage_users()` | Lists and filters users by role, year, and department. |
+| `edit_user(user_id)` | Allows admin updates to names, email, password, approval status, and role-specific profile data. |
+| `toggle_user(user_id)` | Enables or disables a user account by changing `is_approved`. |
+| `settings()` | Saves registration switches and registration start/end dates. |
+
+### `routes_teacher.py`
+
+| Function | Importance |
+| --- | --- |
+| `get_db()` | Opens the database for teacher pages. |
+| `sync_timestamp()` | Generates a timestamp used when grading updates need explicit sync metadata. |
+| `get_node_id()` | Identifies the current node when grading updates are saved. |
+| `dashboard()` | Shows teacher statistics, overdue assignments, and assignment list. |
+| `create_assignment()` | Validates and creates assignments, saves teacher-uploaded files, and stores late/group settings. |
+| `edit_assignment(assignment_id)` | Updates assignment details and optionally replaces uploaded assignment files. |
+| `view_submissions(assignment_id)` | Shows submissions, group members, missing students, and late permissions. |
+| `manage_late(assignment_id)` | Allows or revokes late-submission permission for selected students. |
+| `get_stats(assignment_id)` | Returns JSON submission and grading statistics for an assignment. |
+| `evaluate(submission_id)` | Grades submissions, calculates late penalties, applies group grades, stores feedback, and marks complaints responded. |
+| `export_pdf(assignment_id)` | Generates a PDF submission report using ReportLab. |
+| `download_file(filename)` | Downloads assignment or submission files from `static/uploads`. |
+
+### `routes_student.py`
+
+| Function | Importance |
+| --- | --- |
+| `get_db()` | Opens the database for student pages. |
+| `student_notifications()` | Supplies due-soon and late-available reminders to student templates. |
+| `dashboard()` | Lists assignments matching the student's department/year and calculates status counts and effective values. |
+| `submit(assignment_id)` | Handles individual and group submissions, file uploads, comments, late rules, group limits, and updates before evaluation. |
+| `grades()` | Shows grades, feedback, complaint status, and effective maximum scores after late penalties. |
+| `complain(submission_id)` | Stores a student's grade complaint and marks it pending. |
+
+### `sync.py`
+
+| Function | Importance |
+| --- | --- |
+| `load_env_file(filename='.env.sync')` | Reads sync settings from `.env.sync`. |
+| `utc_now_iso()` | Creates UTC timestamps for sync state. |
+| `parse_sync_ts(value)` | Parses timestamp strings used by sync state. |
+| `since_with_overlap(last_since)` | Adds a small overlap to avoid missing rows near sync boundaries. |
+| `normalize_peer(value)` | Converts peer addresses into full HTTP URLs. |
+| `load_state(path)` | Reads `.sync_state.json`. |
+| `save_state(path, state)` | Writes sync state safely through a temporary file. |
+| `count_records(sync_payload)` | Counts returned records for sync logging. |
+| `sync_once(peer_url, last_since)` | Performs one peer sync: fetch remote rows, post them locally, and return a merge summary. |
+| `parse_args()` | Reads peer addresses from command-line arguments. |
+| `get_peers(args)` | Combines peers from command-line args, environment variables, and `.env.sync`. |
+| `main()` | Runs the continuous synchronization loop and logs success or failure for every peer. |
+
+### `node_discovery.py`
+
+| Function | Importance |
+| --- | --- |
+| `get_local_ips()` | Finds local IP addresses that may be used for node communication. |
+| `test_node_connectivity(ip, port=5000)` | Checks whether a peer is reachable on the Flask port. |
+| `load_current_config()` | Reads existing `.env.sync` settings. |
+| `save_config(config)` | Writes sync configuration to `.env.sync`. |
+| `main()` | Displays node/network information and supports interactive configuration and peer tests. |
+
+### `setup_admin.py`
+
+| Function | Importance |
+| --- | --- |
+| `setup_admin()` | Creates the first admin user if no admin exists. |
+
+Default admin created by `setup_admin.py`:
+
+```text
+Email: admin@system.com
+User ID: ADMIN001
+Password: admin123
+```
+
+Change this password after first login.
+
+### `config.py`
+
+| Setting | Importance |
+| --- | --- |
+| `SECRET_KEY` | Protects Flask sessions and flash messages. |
+| `SQLALCHEMY_DATABASE_URI` | Database URI setting kept for compatibility, although this app currently uses direct `sqlite3`. |
+| `SQLALCHEMY_TRACK_MODIFICATIONS` | Compatibility setting; SQLAlchemy is not actively used. |
+| `UPLOAD_FOLDER` | Absolute path to `static/uploads`. |
+| `MAX_CONTENT_LENGTH` | Upload size limit. `None` means Flask does not enforce a fixed max upload size here. |
+
+## Role Workflows
+
+### Admin Activity Flow
+
+```mermaid
+flowchart TD
+    A[Admin login] --> B[/admin/dashboard]
+    B --> C{Admin chooses activity}
+    C --> D[Approve teacher]
+    C --> E[Reject teacher]
+    C --> F[Manage users]
+    C --> G[Edit user]
+    C --> H[Toggle user status]
+    C --> I[Update registration settings]
+    D --> DB[(assignments.db)]
+    E --> DB
+    F --> DB
+    G --> DB
+    H --> DB
+    I --> DB
+    DB --> S[sync.py replicates changed rows]
+```
+
+### Teacher Activity Flow
+
+```mermaid
+flowchart TD
+    A[Teacher registers] --> B[Pending approval]
+    B --> C[Admin approves]
+    C --> D[Teacher login]
+    D --> E[/teacher/dashboard]
+    E --> F{Teacher chooses activity}
+    F --> G[Create assignment]
+    F --> H[Edit assignment]
+    F --> I[View submissions]
+    F --> J[Allow or revoke late submission]
+    F --> K[Evaluate submission]
+    F --> L[Export PDF]
+    G --> U[Save files in static/uploads]
+    K --> M[Apply grade and feedback]
+    G --> DB[(assignments.db)]
+    H --> DB
+    I --> DB
+    J --> DB
+    M --> DB
+    DB --> S[sync.py replicates changed rows]
+```
+
+### Student Activity Flow
+
+```mermaid
+flowchart TD
+    A[Student registers] --> B[Auto-approved student account]
+    B --> C[Student login]
+    C --> D[/student/dashboard]
+    D --> E[View matching assignments]
+    E --> F{Assignment type}
+    F --> G[Individual submission]
+    F --> H[Group submission]
+    G --> I[Upload file or comment]
+    H --> J[Select teammates and upload shared work]
+    I --> DB[(assignments.db)]
+    J --> DB
+    I --> U[static/uploads]
+    J --> U
+    DB --> K[Teacher evaluates]
+    K --> L[Student views grades]
+    L --> M{Complaint needed?}
+    M -->|Yes| N[Submit complaint]
+    M -->|No| O[Workflow complete]
+    N --> DB
+    DB --> S[sync.py replicates changed rows]
+```
 
 ## Running the System
 
@@ -555,7 +529,7 @@ Create the default admin if needed:
 python setup_admin.py
 ```
 
-Configure peers:
+Configure peer nodes:
 
 ```bash
 python node_discovery.py --configure
@@ -573,74 +547,34 @@ Or pass peers directly:
 python sync.py 10.49.210.216:5000 10.49.210.76:5000
 ```
 
-## Three-Machine ZeroTier Setup
+## Example Three-Machine ZeroTier Setup
 
-1. Install and join the same ZeroTier network on all three machines.
-2. Confirm each machine can ping the other machines by ZeroTier IP.
-3. Run `python app.py` on all three machines.
-4. Open firewall access for port `5000` if needed.
-5. On each machine, set `SYNC_PEERS` to the other two machines.
-6. Run `python sync.py` on each machine.
+1. Install ZeroTier on all three machines.
+2. Join all machines to the same ZeroTier network.
+3. Confirm every machine can ping the other machines through ZeroTier IPs.
+4. Run `python app.py` on every machine.
+5. Open firewall access for port `5000` if needed.
+6. Set `SYNC_PEERS` on each machine to the other two machines.
+7. Run `python sync.py` on every machine.
 
-Example `.env.sync` values:
-
-Machine 1:
+Example `.env.sync` for Machine 1:
 
 ```env
 NODE_ID=machine-1
 SYNC_PEERS=10.49.210.76:5000,10.49.210.99:5000
+SYNC_INTERVAL_SEC=5
+SYNC_TIMEOUT_SEC=10
 SYNC_LOCAL_URL=http://127.0.0.1:5000
+SYNC_STATE_FILE=.sync_state.json
 ```
 
-Machine 2:
-
-```env
-NODE_ID=machine-2
-SYNC_PEERS=10.49.210.216:5000,10.49.210.99:5000
-SYNC_LOCAL_URL=http://127.0.0.1:5000
-```
-
-Machine 3:
-
-```env
-NODE_ID=machine-3
-SYNC_PEERS=10.49.210.216:5000,10.49.210.76:5000
-SYNC_LOCAL_URL=http://127.0.0.1:5000
-```
-
-## User Workflows
-
-Admin workflow:
-
-1. Admin logs in through `auth.py`.
-2. `login()` redirects admin to `routes_admin.py`.
-3. Admin views dashboard, approves teachers, edits users, or changes settings.
-4. Admin changes are written to `assignments.db`.
-5. `sync.py` shares changed rows with peer machines.
-
-Teacher workflow:
-
-1. Teacher registers through `auth.py`.
-2. Registration creates a pending user and teacher profile.
-3. Admin approves the teacher in `routes_admin.py`.
-4. Teacher logs in and is redirected to `routes_teacher.py`.
-5. Teacher creates assignments and reviews submissions.
-6. Assignment and grade changes are saved locally and synchronized to peers.
-
-Student workflow:
-
-1. Student registers through `auth.py`.
-2. Registration creates an approved user and student profile.
-3. Student logs in and is redirected to `routes_student.py`.
-4. Student views assignments that match department and year.
-5. Student submits files or comments.
-6. Teacher evaluates the submission.
-7. Student views grade and may submit a complaint.
+Machine 2 and Machine 3 should use their own `NODE_ID` values and list the other machines as peers.
 
 ## Notes for Future Improvement
 
 - Add stronger conflict resolution for simultaneous edits on different nodes.
+- Add file synchronization or shared object storage if uploaded files must also replicate automatically.
 - Add file type validation and upload size limits.
-- Add automated tests for auth, assignment creation, group submission, late penalties, grading, complaints, and sync.
-- Move repeated SQLite code into shared helper functions if the project grows.
-- Consider adding a production WSGI server and reverse proxy for deployment.
+- Add automated tests for authentication, assignment creation, group submissions, late penalties, grading, complaints, and sync.
+- Move repeated SQLite access patterns into shared helper functions if the project grows.
+- Use a production WSGI server and reverse proxy for deployment outside development.
